@@ -71,9 +71,9 @@ def main():
     ventas = generate_sales()
     orders = generate_orders_from_sales(ventas)
 
-    created = []  # guardará dicts con {id, fecha_emision}
+    created = []  
 
-    # 2) Crear órdenes
+    # 2) Crear ordenes
     print("\n=== Creando ordenes (36 meses) ===")
     for idx, orden in enumerate(orders, start=1):
         fecha_emision = orden["fecha_emision"]
@@ -89,7 +89,7 @@ def main():
         except Exception as e:
             print(f"   ← ERROR creando orden: {e}")
 
-    # 3) Completar órdenes (con fecha_recepcion)
+    # 3) Completar ordenes
     print("\n=== Completando ordenes ===")
     for rec in created:
         oid = rec["id"]
@@ -110,20 +110,21 @@ def main():
         except Exception as e:
             print(f"   ← ERROR completando orden {oid}: {e}")
 
-    # 4) Registrar ventas (sin cambios en tu lógica actual)
+    # 4) Registrar ventas 
     print("\n=== Registrando ventas ===")
     for fecha, qty in ventas:
         payload = {
             "productos": [{"producto": "arrachera", "cantidad": clamp(qty)}],
-            "fecha_venta": fecha  #ajusta a "fecha" si tu endpoint /vender lo pide así
+            "fecha_venta": fecha  
         }
         print(f"→ Venta {fecha}: qty={qty}")
         try:
-            resp = requests.post(SALE_URL, json=payload, timeout=TIMEOUT_SALE)
+            resp = requests.post(SALE_URL, json=payload)
             resp.raise_for_status()
             print("   ← Venta registrada")
         except Exception as e:
             print(f"   ← ERROR registrando venta {fecha}: {e}")
+
 
     print("\nProceso completado para 3 años (36 meses).")
 
