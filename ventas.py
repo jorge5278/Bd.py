@@ -10,10 +10,12 @@ COMPLETE_ORDER_URL  = "http://localhost:3000/api/completarorden"
 SALE_URL            = "http://localhost:3000/api/vender"
 HEALTHCHECK_URL     = "http://localhost:3000/api/ordenes"
 
-TIMEOUT_ORDER       = 30    # segundos para crear orden
-TIMEOUT_COMPLETE    = None  # sin timeout para completar orden
-TIMEOUT_SALE        = 30    # registrar venta
+TIMEOUT_ORDER       = None
+TIMEOUT_COMPLETE    = None
+TIMEOUT_SALE        = None
 HEALTHCHECK_TIMEOUT = 5
+
+PRODUCTOS = ["arrachera", "ribeye"]
 
 def health_check():
     try:
@@ -28,10 +30,6 @@ def clamp(value, min_value=10, max_value=300):
     return max(min_value, min(value, max_value))
 
 def generate_sales(n_months=36, base=100, amplitude=100):
-    """
-    Genera (fecha, cantidad) para 3 años (36 meses),
-    combinando coseno y seno para producir una onda senoidal.
-    """
     ventas = []
     today = datetime.now()
     start = (today.replace(day=1) - timedelta(days=(n_months-1)*30)).replace(day=1)
@@ -44,19 +42,16 @@ def generate_sales(n_months=36, base=100, amplitude=100):
     return ventas
 
 def generate_orders_from_sales(sales):
-    """
-    Basado en cada punto de 'sales', crea la payload para /nuevaorden,
-    incluyendo 'fecha_emision'.
-    """
     orders = []
     for fecha, qty in sales:
+        producto = random.choice(PRODUCTOS)
         orders.append({
             "correo_solicita": "detallista@ejemplo.com",
             "correo_provee":   "proveedor@ejemplo.com",
             "fecha_emision":   fecha,
             "productos": [
                 {
-                    "producto":  "arrachera",
+                    "producto":  producto,
                     "cantidad":  clamp(qty),
                     "precio":    8
                 }
@@ -71,34 +66,45 @@ def main():
     ventas = generate_sales()
     orders = generate_orders_from_sales(ventas)
 
-    created = []  
+    #  Este array guardará id, fecha, producto y cantidad
+    created = []
 
-    # 2) Crear ordenes
+    # 2) Crear órdenes
     print("\n=== Creando ordenes (36 meses) ===")
     for idx, orden in enumerate(orders, start=1):
         fecha_emision = orden["fecha_emision"]
-        prod = orden["productos"][0]
-        print(f"→ Orden #{idx}: fecha_emision={fecha_emision}, qty={prod['cantidad']}, unit_price={prod['precio']}")
+        prod_info = orden["productos"][0]
+        producto = prod_info["producto"]
+        cantidad = prod_info["cantidad"]
+
+        print(f"→ Orden #{idx}: producto={producto}, fecha_emision={fecha_emision}, qty={cantidad}")
         try:
             resp = requests.post(ORDER_URL, json=orden, timeout=TIMEOUT_ORDER)
             resp.raise_for_status()
             data = resp.json()
             oid = data.get("id_orden") or data.get("id")
             print(f"   ← Creada con ID {oid}")
-            created.append({"id": oid, "fecha_emision": fecha_emision})
+
+            # Guardamos también producto y cantidad
+            created.append({
+                "id": oid,
+                "fecha_emision": fecha_emision,
+                "producto": producto,
+                "cantidad": cantidad
+            })
+
         except Exception as e:
             print(f"   ← ERROR creando orden: {e}")
 
-    # 3) Completar ordenes
+    # 3) Completar órdenes
     print("\n=== Completando ordenes ===")
-    for rec in created:
+    for idx, rec in enumerate(created, start=1):
         oid = rec["id"]
         fe = datetime.strptime(rec["fecha_emision"], "%Y-%m-%d")
-        # Simular recepción entre 1 y 7 días después
         delta = timedelta(days=random.randint(1, 7))
         fecha_recepcion = (fe + delta).strftime("%Y-%m-%d")
 
-        print(f"→ Completando orden ID {oid} con fecha_recepcion={fecha_recepcion} …")
+        print(f"→ Mes #{idx}: completando orden ID {oid} con fecha_recepcion={fecha_recepcion}")
         try:
             resp = requests.post(
                 f"{COMPLETE_ORDER_URL}/{oid}",
@@ -110,21 +116,27 @@ def main():
         except Exception as e:
             print(f"   ← ERROR completando orden {oid}: {e}")
 
-    # 4) Registrar ventas 
+    # 4) Registrar ventas usando el mismo producto y cantidad
     print("\n=== Registrando ventas ===")
-    for fecha, qty in ventas:
+    for idx, rec in enumerate(created, start=1):
+        fecha = rec["fecha_emision"]
+        producto = rec["producto"]
+        cantidad = rec["cantidad"]
+
         payload = {
-            "productos": [{"producto": "arrachera", "cantidad": clamp(qty)}],
-            "fecha_venta": fecha  
+            "fecha_emision": fecha,
+            "productos": [
+                {"producto": producto, "cantidad": cantidad}
+            ]
         }
-        print(f"→ Venta {fecha}: qty={qty}")
+
+        print(f"→ Venta #{idx}: producto={producto}, fecha_emision={fecha}, qty={cantidad}")
         try:
-            resp = requests.post(SALE_URL, json=payload)
+            resp = requests.post(SALE_URL, json=payload, timeout=TIMEOUT_SALE)
             resp.raise_for_status()
             print("   ← Venta registrada")
         except Exception as e:
-            print(f"   ← ERROR registrando venta {fecha}: {e}")
-
+            print(f"   ← ERROR registrando venta en {fecha}: {e}")
 
     print("\nProceso completado para 3 años (36 meses).")
 
